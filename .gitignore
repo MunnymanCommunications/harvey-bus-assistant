@@ -1,0 +1,30 @@
+# Secrets — NEVER commit these
+secrets.yaml
+.env
+*.key
+*.pem
+*.crt
+
+# HA runtime data
+home-assistant.log
+home-assistant_v2.db
+home-assistant_v2.db-shm
+home-assistant_v2.db-wal
+.storage/
+backups/
+deps/
+tts/
+
+# Model files (too large for git)
+*.bin
+*.gguf
+*.tflite
+*.onnx
+whisper-data/
+piper-data/
+ollama-models/
+
+# OS
+.DS_Store
+*.swp
+__pycache__/

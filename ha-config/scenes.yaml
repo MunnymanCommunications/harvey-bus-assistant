@@ -1,0 +1,77 @@
+# Harvey Bus Scenes
+# Pre-defined settings for different modes
+
+- name: Goodnight
+  id: goodnight
+  description: 'Turn off all lights, lock doors, set thermostat to 65F'
+  entities:
+    light.bus_main:
+      state: 'off'
+    light.bus_bedroom:
+      state: 'off'
+    light.bus_living_room:
+      state: 'off'
+    lock.bus_door:
+      state: 'locked'
+    lock.bus_back_door:
+      state: 'locked'
+    climate.bus_thermostat:
+      temperature: 18
+      hvac_mode: 'cool'
+
+- name: Good Morning
+  id: goodmorning
+  description: 'Gradual lights on, check weather, set comfortable temp'
+  entities:
+    light.bus_main:
+      state: 'on'
+      brightness: 128
+    light.bus_bedroom:
+      state: 'on'
+      brightness: 200
+    climate.bus_thermostat:
+      temperature: 21
+      hvac_mode: 'heat'
+
+- name: Movie Mode
+  id: moviemode
+  description: 'Dim lights, close shades, AV equipment on'
+  entities:
+    light.bus_main:
+      state: 'on'
+      brightness: 25
+    light.bus_living_room:
+      state: 'on'
+      brightness: 15
+    media_player.bus_receiver:
+      state: 'on'
+
+- name: Away Mode
+  id: awaymode
+  description: 'Lights off, doors locked, thermostat to 65F, alarm armed'
+  entities:
+    light.bus_main:
+      state: 'off'
+    light.bus_bedroom:
+      state: 'off'
+    lock.bus_door:
+      state: 'locked'
+    lock.bus_back_door:
+      state: 'locked'
+    climate.bus_thermostat:
+      temperature: 18
+      hvac_mode: 'cool'
+
+- name: Home Mode
+  id: homemode
+  description: 'Welcome home — lights on, doors unlocked'
+  entities:
+    light.bus_main:
+      state: 'on'
+      brightness: 200
+    light.bus_living_room:
+      state: 'on'
+      brightness: 180
+    climate.bus_thermostat:
+      temperature: 21
+      hvac_mode: 'heat'

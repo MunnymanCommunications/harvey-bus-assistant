@@ -1,0 +1,93 @@
+version: "3.9"
+
+# ================================================================
+#  HARVEY BUS — COMPLETE DOCKER STACK
+#  Venture LLC | MunnymanCommunications
+#  All containers use restart: always — survive power cuts/crashes
+# ================================================================
+
+services:
+
+  # ── Home Assistant ─────────────────────────────────────────
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    restart: always
+    network_mode: host
+    privileged: true
+    environment:
+      - TZ=America/Denver
+    volumes:
+      - /opt/harvey/ha-config:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8123/api/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  # ── Whisper STT ────────────────────────────────────────────
+  whisper:
+    container_name: whisper-stt
+    image: rhasspy/wyoming-whisper:latest
+    restart: always
+    command: >
+      --model tiny-int8
+      --language en
+      --uri tcp://0.0.0.0:10300
+      --data-dir /data
+      --download-dir /data
+      --beam-size 1
+    volumes:
+      - /opt/harvey/whisper-data:/data
+    ports:
+      - "10300:10300"
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 10300 || exit 1"]
+      interval: 30s
+      retries: 3
+      start_period: 60s
+
+  # ── Piper TTS ──────────────────────────────────────────────
+  piper:
+    container_name: piper-tts
+    image: rhasspy/wyoming-piper:latest
+    restart: always
+    command: >
+      --voice en_US-ryan-medium
+      --uri tcp://0.0.0.0:10200
+      --data-dir /data
+      --download-dir /data
+    volumes:
+      - /opt/harvey/piper-data:/data
+    ports:
+      - "10200:10200"
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 10200 || exit 1"]
+      interval: 30s
+      retries: 3
+      start_period: 45s
+
+  # ── OpenWakeWord ───────────────────────────────────────────
+  openwakeword:
+    container_name: openwakeword
+    image: rhasspy/wyoming-openwakeword:latest
+    restart: always
+    command: --uri tcp://0.0.0.0:10400 --preload-model hey_jarvis
+    ports:
+      - "10400:10400"
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+    privileged: true
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 10400 || exit 1"]
+      interval: 30s
+      retries: 3
+      start_period: 45s

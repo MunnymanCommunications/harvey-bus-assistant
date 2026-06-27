@@ -1,0 +1,93 @@
+# Harvey Voice Scripts
+# Used by automations and voice commands
+
+route_voice_command:
+  alias: 'Route Voice Command'
+  description: 'Route incoming voice command through Harvey Router'
+  mode: parallel
+  sequence:
+    - service: logger.log
+      data:
+        message: 'Voice command received: {{ text }}'
+        level: debug
+    # This is typically called by harvey_router.py via REST API
+    # Script here for automation trigger reference
+
+check_harvey_health:
+  alias: 'Check Harvey Health'
+  description: 'Verify all Harvey services are running'
+  mode: single
+  sequence:
+    - service: logger.log
+      data:
+        message: 'Harvey health check running'
+        level: debug
+    # Checks are handled by watchdog.sh systemd timer
+    # This script placeholder for future expansion
+
+turn_on_lights:
+  alias: 'Turn On Lights'
+  description: 'Turn on specified light with brightness'
+  fields:
+    entity_id:
+      description: 'Light entity to control'
+      required: true
+    brightness:
+      description: 'Brightness (0-255)'
+      default: 255
+  sequence:
+    - service: light.turn_on
+      data:
+        entity_id: '{{ entity_id }}'
+        brightness: '{{ brightness }}'
+
+turn_off_lights:
+  alias: 'Turn Off Lights'
+  description: 'Turn off specified light'
+  fields:
+    entity_id:
+      description: 'Light entity to control'
+      required: true
+  sequence:
+    - service: light.turn_off
+      data:
+        entity_id: '{{ entity_id }}'
+
+set_temperature:
+  alias: 'Set Temperature'
+  description: 'Set thermostat to target temperature'
+  fields:
+    temperature:
+      description: 'Target temperature in Celsius'
+      required: true
+      example: 21
+  sequence:
+    - service: climate.set_temperature
+      target:
+        entity_id: climate.bus_thermostat
+      data:
+        temperature: '{{ temperature }}'
+
+lock_door:
+  alias: 'Lock Door'
+  description: 'Lock specified door'
+  fields:
+    entity_id:
+      description: 'Lock entity to control'
+      required: true
+  sequence:
+    - service: lock.lock
+      target:
+        entity_id: '{{ entity_id }}'
+
+unlock_door:
+  alias: 'Unlock Door'
+  description: 'Unlock specified door'
+  fields:
+    entity_id:
+      description: 'Lock entity to control'
+      required: true
+  sequence:
+    - service: lock.unlock
+      target:
+        entity_id: '{{ entity_id }}'

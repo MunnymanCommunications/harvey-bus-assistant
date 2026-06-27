@@ -1,0 +1,71 @@
+# Harvey Voice Automations
+# Triggered by voice input and routed through Harvey Router
+
+- id: '1000'
+  alias: 'Harvey: Voice Command Received'
+  description: 'Route voice commands through Harvey Router'
+  trigger:
+    platform: event
+    event_type: voice_command_received
+  condition: []
+  action:
+    - service: script.route_voice_command
+      data:
+        text: '{{ trigger.event.data.text }}'
+        language: '{{ trigger.event.data.language | default("en") }}'
+
+- id: '1001'
+  alias: 'Harvey: Health Check'
+  description: 'Monitor Harvey stack health'
+  trigger:
+    platform: time_pattern
+    minutes: '/5'
+  condition: []
+  action:
+    - service: script.check_harvey_health
+
+- id: '1002'
+  alias: 'Harvey: Battery Low Warning'
+  description: 'Notify if UPS battery is low'
+  trigger:
+    platform: numeric_state
+    entity_id: sensor.ups_battery_percentage
+    below: 20
+  action:
+    - service: persistent_notification.create
+      data:
+        title: 'Harvey Power Warning'
+        message: 'UPS battery below 20%. Prepare for shutdown.'
+        notification_id: 'harvey_power_warning'
+
+- id: '1003'
+  alias: 'Harvey: Mode Changed'
+  description: 'Log when AI mode changes'
+  trigger:
+    platform: state
+    entity_id: input_select.harvey_ai_mode
+  action:
+    - service: logger.log
+      data:
+        message: 'Harvey AI mode changed to {{ states("input_select.harvey_ai_mode") }}'
+        level: info
+
+- id: '1004'
+  alias: 'Harvey: Goodnight Routine'
+  description: 'Lights off, doors locked, thermostat adjusted'
+  trigger:
+    platform: voice_command
+    text: goodnight
+  action:
+    - service: scene.turn_on
+      entity_id: scene.goodnight
+
+- id: '1005'
+  alias: 'Harvey: Good Morning Routine'
+  description: 'Wake up sequence'
+  trigger:
+    platform: voice_command
+    text: good morning
+  action:
+    - service: scene.turn_on
+      entity_id: scene.goodmorning

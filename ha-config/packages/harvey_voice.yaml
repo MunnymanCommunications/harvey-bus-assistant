@@ -1,0 +1,68 @@
+# Harvey Voice Assistant Package
+# Configures Wyoming voice integration (Whisper, Piper, OpenWakeWord)
+
+# Rest integration to call Harvey Router
+rest_command:
+  route_voice_command:
+    url: 'http://localhost:8000/route'
+    method: POST
+    content_type: 'application/json'
+    payload: '{"text": "{{ text }}", "user": "{{ user | default("default") }}"}'
+
+# Template for voice assistant status
+template:
+  - trigger:
+      platform: time_pattern
+      minutes: "/1"
+    sensor:
+      - name: Harvey Voice Status
+        unique_id: harvey_voice_status
+        state: |
+          {% if states('input_select.harvey_ai_mode') == 'offline' %}
+            offline
+          {% elif states('input_boolean.internet_available') == 'on' %}
+            hybrid
+          {% else %}
+            offline
+          {% endif %}
+
+# Input selectors for voice assistant
+input_select:
+  voice_input_language:
+    name: Voice Input Language
+    options:
+      - English
+      - Spanish
+    initial: English
+    icon: mdi:microphone
+
+input_boolean:
+  voice_assistant_active:
+    name: Voice Assistant Active
+    initial: true
+    icon: mdi:robot
+
+# Binary sensors for service monitoring
+binary_sensor:
+  - platform: template
+    sensors:
+      whisper_available:
+        friendly_name: "Whisper STT Available"
+        unique_id: whisper_available
+        device_class: connectivity
+        value_template: "{{ (states('input_boolean.whisper_running') | default('unknown')) == 'on' }}"
+
+      piper_available:
+        friendly_name: "Piper TTS Available"
+        unique_id: piper_available
+        device_class: connectivity
+        value_template: "{{ (states('input_boolean.piper_running') | default('unknown')) == 'on' }}"
+
+      openwakeword_available:
+        friendly_name: "OpenWakeWord Available"
+        unique_id: openwakeword_available
+        device_class: connectivity
+        value_template: "{{ (states('input_boolean.openwakeword_running') | default('unknown')) == 'on' }}"
+
+# Automations for voice assistant
+automation: !include ../automations.yaml

@@ -1,0 +1,94 @@
+# Home Assistant Core Configuration
+# Harvey Bus Assistant — Venture LLC
+
+homeassistant:
+  name: Harvey Bus
+  latitude: !secret latitude
+  longitude: !secret longitude
+  elevation: !secret elevation
+  unit_system: metric
+  time_zone: !secret timezone
+  country: US
+
+  packages:
+    harvey_voice: !include packages/harvey_voice.yaml
+    harvey_scenes: !include packages/harvey_scenes.yaml
+
+# Logging (adjust level as needed)
+logger:
+  default: info
+  logs:
+    homeassistant.core: debug
+    homeassistant.components.automation: debug
+
+# Enable the web interface
+http:
+  cors_allowed_origins:
+    - http://localhost:8123
+    - http://localhost:5000
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 127.0.0.1
+    - ::1
+
+# API settings (used by Harvey Router)
+api:
+
+# Enable automations
+automation: !include automations.yaml
+
+# Scenes
+scene: !include scenes.yaml
+
+# Scripts
+script: !include scripts.yaml
+
+# Input helpers (for AI mode selection, etc.)
+input_select:
+  harvey_ai_mode:
+    name: Harvey AI Mode
+    options:
+      - offline
+      - hybrid
+      - online
+    initial: offline
+    icon: mdi:robot
+
+input_boolean:
+  internet_available:
+    name: Internet Available
+    initial: false
+    icon: mdi:wifi
+
+# Frontend configuration
+frontend:
+  themes: !include_dir_named themes/
+
+# Enable template entities
+template:
+  - trigger:
+      platform: time_pattern
+      minutes: "/5"
+    sensor:
+      - name: Bus Temperature
+        unique_id: bus_temp_sensor
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state: "{{ state_attr('climate.bus_thermostat', 'current_temperature') | round(1) }}"
+
+# History (keep 30 days for memory system)
+history:
+  purge_keep_days: 30
+  exclude:
+    domains:
+      - automation
+      - script
+
+# Enable system health check
+system_health:
+
+# Enable diagnostics
+diagnostics:
+
+# Development mode (remove in production if needed)
+development_mode: false
