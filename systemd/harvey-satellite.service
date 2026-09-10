@@ -1,0 +1,16 @@
+[Unit]
+Description=Harvey Voice Satellite (mic/speaker bridge)
+Documentation=https://github.com/MunnymanCommunications/harvey-bus-assistant
+After=harvey-stack.service sound.target
+Wants=harvey-stack.service
+
+[Service]
+Type=simple
+ExecStart=/opt/harvey/scripts/start-satellite.sh
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/harvey/logs/satellite.log
+StandardError=append:/opt/harvey/logs/satellite.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Harvey Model Warmup (preload Ollama model after boot)
+After=harvey-stack.service ollama.service
+Wants=harvey-stack.service ollama.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/harvey/scripts/harvey-warmup.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -2,8 +2,7 @@ version: "3.9"
 
 # ================================================================
 #  HARVEY BUS — COMPLETE DOCKER STACK
-#  Venture LLC | MunnymanCommunications
-#  All containers use restart: always — survive power cuts/crashes
+#  All containers restart automatically on crash or power outage.
 # ================================================================
 
 services:
@@ -12,19 +11,22 @@ services:
   homeassistant:
     container_name: homeassistant
     image: ghcr.io/home-assistant/home-assistant:stable
-    restart: always
-    network_mode: host
+    restart: always                  # ← restarts after power cut
+    network_mode: host               # ← full LAN access, mDNS works
     privileged: true
     environment:
-      - TZ=America/Denver
+      - TZ=${TZ:-America/New_York}
     volumes:
       - /opt/harvey/ha-config:/config
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro
     devices:
-      - /dev/bus/usb:/dev/bus/usb
+      - /dev/bus/usb:/dev/bus/usb    # Coral TPU + USB devices
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8123/api/"]
+      # HA's frontend index is served unauthenticated, unlike /api/ (401
+      # without a token) -- use it so this never needs a real token baked
+      # into a file that ends up in version control.
+      test: ["CMD", "curl", "-sf", "http://localhost:8123/"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -46,9 +48,9 @@ services:
       - /opt/harvey/whisper-data:/data
     ports:
       - "10300:10300"
-    mem_limit: 512m
+    mem_limit: 1g
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 10300 || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/10300' || exit 1"]
       interval: 30s
       retries: 3
       start_period: 60s
@@ -67,9 +69,12 @@ services:
       - /opt/harvey/piper-data:/data
     ports:
       - "10200:10200"
-    mem_limit: 256m
+    # 256m left Piper pinned at its ceiling: constant reclaim stalls made it
+    # stop answering on 10200 for a minute or two at a time, which hung the
+    # pipeline at the synthesize stage with no error.
+    mem_limit: 1g
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 10200 || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/10200' || exit 1"]
       interval: 30s
       retries: 3
       start_period: 45s
@@ -79,15 +84,24 @@ services:
     container_name: openwakeword
     image: rhasspy/wyoming-openwakeword:latest
     restart: always
-    command: --uri tcp://0.0.0.0:10400 --preload-model hey_jarvis
+    command: >
+      --uri tcp://0.0.0.0:10400
+      --preload-model hey_jarvis
+      --threshold 0.35
+      --custom-model-dir /custom-models
+    volumes:
+      - /opt/harvey/openwakeword-models:/custom-models
     ports:
       - "10400:10400"
-    devices:
-      - /dev/bus/usb:/dev/bus/usb
-    privileged: true
+    # No Coral passthrough here: openWakeWord's models cannot run on an Edge
+    # TPU. edgetpu_compiler rejects melspectrogram (CONV_2D fails to prepare)
+    # and hey_jarvis (dynamic-sized tensors), and maps 0 of 64 embedding_model
+    # ops to the TPU because the weights are float32, not int8. The USB
+    # passthrough and privileged flag bought nothing and are dropped.
     mem_limit: 256m
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 10400 || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/10400' || exit 1"]
       interval: 30s
       retries: 3
       start_period: 45s
+

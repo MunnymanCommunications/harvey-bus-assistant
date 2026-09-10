@@ -1,0 +1,7 @@
+[Unit]
+Description=Harvey System Watchdog
+After=harvey-stack.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/harvey/scripts/watchdog.sh

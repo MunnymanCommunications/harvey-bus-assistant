@@ -1,0 +1,10 @@
+[Unit]
+Description=Restart Harvey Satellite every 20 minutes
+
+[Timer]
+OnBootSec=60min
+OnUnitActiveSec=60min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

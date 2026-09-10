@@ -1,0 +1,7 @@
+[Unit]
+Description=Install custom Harvey wake word once its model appears
+After=harvey-stack.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/harvey/scripts/install-wakeword.sh

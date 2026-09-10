@@ -1,0 +1,22 @@
+[Unit]
+Description=Harvey Intent Router (Coral TPU + HA Bridge)
+Documentation=https://github.com/MunnymanCommunications/harvey-bus-assistant
+After=harvey-stack.service ollama.service
+Wants=harvey-stack.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/harvey
+Environment="HA_TOKEN=fe3dffbf24645ac7d2c778919fe9da6fbd632d4a91dffa1f110df72c3ce9065852e8da653666d407cfb54c838f6e98e751d3a908c9c3d0c46d3bcffd17efb552"
+Environment="HA_URL=http://localhost:8123"
+Environment="OLLAMA_URL=http://localhost:11434"
+Environment="OLLAMA_MODEL=harvey"
+ExecStart=/opt/harvey/venv/bin/python3 /opt/harvey/scripts/harvey_router.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/harvey/logs/router.log
+StandardError=append:/opt/harvey/logs/router.log
+
+[Install]
+WantedBy=multi-user.target

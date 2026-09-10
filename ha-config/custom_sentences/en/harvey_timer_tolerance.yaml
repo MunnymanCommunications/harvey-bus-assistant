@@ -1,0 +1,28 @@
+language: "en"
+# Extends (not replaces) Home Assistant's built-in timer intents to tolerate
+# common Whisper mis-transcriptions on this hardware. Confirmed failures:
+#   "set a timer"    -> heard as "set of timer" / "set it timer"
+#   "left on my timer" -> heard as "left in my timer"
+# The built-in grammar's optional article slot is exactly [a|an|the|my], so
+# "of"/"it"/"uh" fall outside it and the whole sentence fails to match --
+# it then falls through to the LLM, which fabricates a plausible-sounding
+# answer instead of admitting no timer exists. This is a deterministic,
+# non-LLM fix: same built-in intents (HassStartTimer/HassTimerStatus), same
+# {timer_minutes:minutes} etc. slots, just a wider set of accepted filler
+# words in the one spot Whisper keeps getting wrong.
+intents:
+  HassStartTimer:
+    data:
+      - sentences:
+          - "(start|set|create) [a|an|the|my|of|it|uh] timer for {timer_minutes:minutes}( |-)minute[s]"
+          - "(start|set|create) [a|an|the|my|of|it|uh] timer for {timer_hours:hours}( |-)hour[s]"
+          - "(start|set|create) [a|an|the|my|of|it|uh] timer for {timer_hours:hours}( |-)hour[s] [and] {timer_minutes:minutes}( |-)minute[s]"
+          - "(start|set|create) [a|an|the|my|of|it|uh] timer for {timer_minutes:minutes}( |-)minute[s] [and] {timer_seconds:seconds}( |-)second[s]"
+          - "(start|set|create) [a|an|the|my|of|it|uh] timer for {timer_seconds:seconds}( |-)second[s]"
+  HassTimerStatus:
+    data:
+      - sentences:
+          - "[how much] time [is] left in [the|my] timer[s]"
+          - "how long [is] left in [the|my] timer[s]"
+          - "[how much] time [is] left in [the|my] {timer_minutes:start_minutes}( |-)minute[s] timer"
+          - "[how much] time [is] left in [the|my] {timer_hours:start_hours}( |-)hour[s] timer"

@@ -1,0 +1,7 @@
+[Unit]
+Description=Periodic Harvey Satellite restart (clears internal stuck-connection state)
+After=harvey-satellite.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/harvey/scripts/satellite-refresh.sh

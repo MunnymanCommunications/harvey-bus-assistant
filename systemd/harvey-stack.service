@@ -1,0 +1,23 @@
+[Unit]
+Description=Harvey Bus AI Stack (Docker Compose)
+Documentation=https://github.com/MunnymanCommunications/harvey-bus-assistant
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/harvey
+# Pull latest images on start (skipped if offline)
+ExecStartPre=-/usr/bin/docker compose pull --quiet 2>/dev/null || true
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+ExecStop=/usr/bin/docker compose down --remove-orphans
+ExecReload=/usr/bin/docker compose restart
+TimeoutStartSec=300
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

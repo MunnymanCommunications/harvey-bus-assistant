@@ -1,95 +1,10 @@
-# Harvey Scenes Package
-# Pre-defined automation scenes for common routines
+scene:
+  - name: Night Mode
+    entities:
+      input_boolean.harvey_voice_enabled:
+        state: "on"
 
-scene: !include ../scenes.yaml
-
-# Input selectors for scene management
-input_select:
-  current_scene:
-    name: Current Scene
-    options:
-      - None
-      - Goodnight
-      - Good Morning
-      - Movie Mode
-      - Away Mode
-      - Home Mode
-    initial: None
-    icon: mdi:movie-open
-
-# Automations for scene triggering
-automation:
-  - id: scene_goodnight
-    alias: 'Scene: Goodnight'
-    trigger:
-      platform: voice_command
-      text: goodnight
-    action:
-      - service: scene.turn_on
-        target:
-          entity_id: scene.goodnight
-      - service: input_select.select_option
-        target:
-          entity_id: input_select.current_scene
-        data:
-          option: Goodnight
-
-  - id: scene_goodmorning
-    alias: 'Scene: Good Morning'
-    trigger:
-      platform: voice_command
-      text: good morning
-    action:
-      - service: scene.turn_on
-        target:
-          entity_id: scene.goodmorning
-      - service: input_select.select_option
-        target:
-          entity_id: input_select.current_scene
-        data:
-          option: Good Morning
-
-  - id: scene_movie
-    alias: 'Scene: Movie Mode'
-    trigger:
-      platform: voice_command
-      text: movie mode
-    action:
-      - service: scene.turn_on
-        target:
-          entity_id: scene.moviemode
-      - service: input_select.select_option
-        target:
-          entity_id: input_select.current_scene
-        data:
-          option: Movie Mode
-
-  - id: scene_away
-    alias: 'Scene: Away Mode'
-    trigger:
-      platform: voice_command
-      text: away mode
-    action:
-      - service: scene.turn_on
-        target:
-          entity_id: scene.awaymode
-      - service: input_select.select_option
-        target:
-          entity_id: input_select.current_scene
-        data:
-          option: Away Mode
-
-  - id: scene_home
-    alias: 'Scene: Home Mode'
-    trigger:
-      platform: voice_command
-      text: home mode
-    action:
-      - service: scene.turn_on
-        target:
-          entity_id: scene.homemode
-      - service: input_select.select_option
-        target:
-          entity_id: input_select.current_scene
-        data:
-          option: Home Mode
+  - name: Morning Mode
+    entities:
+      input_boolean.harvey_voice_enabled:
+        state: "on"

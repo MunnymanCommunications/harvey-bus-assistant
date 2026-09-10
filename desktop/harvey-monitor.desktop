@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Harvey Live Monitor
+Comment=Watch Harvey's voice pipeline live (transcripts, AI responses, errors)
+Exec=gnome-terminal --title="Harvey Live Monitor" -- bash -c "python3 -u /opt/harvey/scripts/monitor.py; exec bash"
+Icon=utilities-terminal
+Terminal=false
+Categories=Utility;

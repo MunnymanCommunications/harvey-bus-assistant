@@ -1,0 +1,8 @@
+[Unit]
+Description=Harvey LLM Failover (keep satellite on a reachable conversation agent)
+After=harvey-stack.service
+Wants=harvey-stack.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/harvey/scripts/llm-failover.py

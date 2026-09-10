@@ -1,0 +1,162 @@
+# Harvey Reminders Package — auto-loaded
+#
+# Deterministic (non-LLM) timer/reminder announcements and acknowledgement,
+# built entirely on Home Assistant's own intent/trigger engine so the 1.5B
+# conversation model is never asked to call tools or parse structured
+# commands. See [[harvey-reminders-design]] for the reasoning.
+#
+# Reminders live in todo.harvey_reminders (added via the local_todo
+# integration). "Mark it complete" always resolves to the reminder that was
+# just spoken, because harvey_last_reminder is only ever set at the moment
+# of announcement -- it is a plain string match, not an LLM guess.
+
+input_text:
+  harvey_last_reminder:
+    name: Harvey Last Announced Reminder
+    icon: mdi:bell-ring
+  # Grounds the LLM in real reminder state, the same way Home Assistant's
+  # DATE_TIME_PROMPT grounds it in the real clock: a short, always-true fact
+  # is injected into the system prompt every turn (see the ollama subentry's
+  # `prompt` template) so the model *reports* real data instead of guessing.
+  # It is not fed as text the LLM can act on, and updating it never runs an
+  # action -- it is a read-only mirror of todo.harvey_reminders, refreshed
+  # every minute plus immediately on any change to that list.
+  harvey_reminders_summary:
+    name: Harvey Reminders Context (for LLM grounding)
+    icon: mdi:text-box-outline
+    max: 255
+
+automation:
+  - id: harvey_timer_finished_announce
+    alias: "Harvey — speak finished timer"
+    trigger:
+      - platform: event
+        event_type: timer_finished
+    action:
+      - service: assist_satellite.announce
+        target:
+          entity_id: assist_satellite.harvey_satellite
+        data:
+          preannounce: false
+          message: >
+            {% set n = trigger.event.data.name %}
+            Your{{ ' ' + n if n else '' }} timer is up!
+    mode: parallel
+
+  - id: harvey_reminder_nag
+    alias: "Harvey — announce and re-nag due reminders"
+    trigger:
+      - platform: time_pattern
+        minutes: "/1"
+    action:
+      - service: todo.get_items
+        target:
+          entity_id: todo.harvey_reminders
+        data:
+          status: needs_action
+        response_variable: reminder_list
+      - variables:
+          # Comparing ISO strings directly breaks the moment two due times
+          # don't share an identical offset (DST, or one written in UTC and
+          # one in local time) -- as_datetime parses both sides properly
+          # before comparing, so the offset used to set the reminder doesn't
+          # matter.
+          due_items: >-
+            {% set result = namespace(items=[]) %}
+            {% for i in reminder_list['todo.harvey_reminders']['items'] %}
+              {% if i.due is defined and i.due and (i.due | as_datetime) <= now() %}
+                {% set result.items = result.items + [i] %}
+              {% endif %}
+            {% endfor %}
+            {{ result.items }}
+      - if: "{{ due_items | count > 0 }}"
+        then:
+          - variables:
+              item: "{{ due_items[0] }}"
+          - service: input_text.set_value
+            target:
+              entity_id: input_text.harvey_last_reminder
+            data:
+              value: "{{ item.summary }}"
+          - service: assist_satellite.announce
+            target:
+              entity_id: assist_satellite.harvey_satellite
+            data:
+              preannounce: false
+              message: >-
+                Reminder: {{ item.summary }}. Say "mark that complete" once
+                it's done, or I'll remind you again in an hour.
+          - service: todo.update_item
+            target:
+              entity_id: todo.harvey_reminders
+            data:
+              item: "{{ item.uid }}"
+              due_datetime: "{{ (now() + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%S') }}"
+    mode: single
+
+  - id: harvey_reminder_mark_complete
+    alias: "Harvey — mark last-announced reminder complete"
+    trigger:
+      - platform: conversation
+        command:
+          - "mark [that] [as] complete"
+          - "mark [that] [as] done"
+          - "[it's] [already] done"
+          - "i already did that"
+          - "already did it"
+          - "already took care of it"
+    condition:
+      - condition: template
+        value_template: "{{ states('input_text.harvey_last_reminder') not in ('', 'unknown', 'unavailable') }}"
+    action:
+      - variables:
+          reminder_name: "{{ states('input_text.harvey_last_reminder') }}"
+      - service: todo.remove_item
+        target:
+          entity_id: todo.harvey_reminders
+        data:
+          item: "{{ reminder_name }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.harvey_last_reminder
+        data:
+          value: ""
+      - set_conversation_response: "Got it, marked '{{ reminder_name }}' complete."
+    mode: single
+
+  - id: harvey_reminders_context_refresh
+    alias: "Harvey — refresh reminder context for LLM grounding"
+    trigger:
+      - platform: time_pattern
+        minutes: "/1"
+      - platform: state
+        entity_id: todo.harvey_reminders
+    action:
+      - service: todo.get_items
+        target:
+          entity_id: todo.harvey_reminders
+        data:
+          status: needs_action
+        response_variable: reminder_list
+      - variables:
+          items: "{{ reminder_list['todo.harvey_reminders']['items'] }}"
+          # A plain English one-liner, not raw data -- the model should
+          # report this back, not parse or reformat it.
+          summary: >-
+            {% set names = namespace(list=[]) %}
+            {% for i in items %}
+              {% set names.list = names.list + ['"' + i.summary + '"'] %}
+            {% endfor %}
+            {% if items | count == 0 -%}
+              No pending reminders right now.
+            {%- elif items | count == 1 -%}
+              You have 1 pending reminder: {{ names.list[0] }}.
+            {%- else -%}
+              You have {{ items | count }} pending reminders: {{ names.list | join(', ') }}.
+            {%- endif %}
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.harvey_reminders_summary
+        data:
+          value: "{{ summary.strip()[:250] }}"
+    mode: single

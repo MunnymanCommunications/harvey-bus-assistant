@@ -1,68 +1,84 @@
-# Harvey Voice Assistant Package
-# Configures Wyoming voice integration (Whisper, Piper, OpenWakeWord)
-
-# Rest integration to call Harvey Router
-rest_command:
-  route_voice_command:
-    url: 'http://localhost:8000/route'
-    method: POST
-    content_type: 'application/json'
-    payload: '{"text": "{{ text }}", "user": "{{ user | default("default") }}"}'
-
-# Template for voice assistant status
-template:
-  - trigger:
-      platform: time_pattern
-      minutes: "/1"
-    sensor:
-      - name: Harvey Voice Status
-        unique_id: harvey_voice_status
-        state: |
-          {% if states('input_select.harvey_ai_mode') == 'offline' %}
-            offline
-          {% elif states('input_boolean.internet_available') == 'on' %}
-            hybrid
-          {% else %}
-            offline
-          {% endif %}
-
-# Input selectors for voice assistant
-input_select:
-  voice_input_language:
-    name: Voice Input Language
-    options:
-      - English
-      - Spanish
-    initial: English
-    icon: mdi:microphone
+# Harvey Voice Package — auto-loaded
+# Wyoming integrations are configured via UI after first boot.
+# This file pre-loads input helpers and basic automations.
 
 input_boolean:
-  voice_assistant_active:
-    name: Voice Assistant Active
-    initial: true
+  harvey_voice_enabled:
+    name: Harvey Voice Active
+    icon: mdi:microphone
+
+  internet_available:
+    name: Internet Available
+    icon: mdi:wifi-check
+
+input_select:
+  harvey_ai_mode:
+    name: Harvey AI Mode
+    options:
+      - Local (Qwen2.5)
+      - Cloud (Gemini)
+      - Auto
+    initial: Local (Qwen2.5)
     icon: mdi:robot
 
-# Binary sensors for service monitoring
-binary_sensor:
-  - platform: template
-    sensors:
-      whisper_available:
-        friendly_name: "Whisper STT Available"
-        unique_id: whisper_available
-        device_class: connectivity
-        value_template: "{{ (states('input_boolean.whisper_running') | default('unknown')) == 'on' }}"
+template:
+  - sensor:
+      - name: "Harvey Mode"
+        state: >
+          {% if is_state('input_boolean.internet_available', 'on') %}
+            Online
+          {% else %}
+            Off-Grid
+          {% endif %}
+        icon: >
+          {% if is_state('input_boolean.internet_available', 'on') %}
+            mdi:wifi
+          {% else %}
+            mdi:wifi-off
+          {% endif %}
 
-      piper_available:
-        friendly_name: "Piper TTS Available"
-        unique_id: piper_available
-        device_class: connectivity
-        value_template: "{{ (states('input_boolean.piper_running') | default('unknown')) == 'on' }}"
+automation:
+  - id: harvey_startup_announce
+    alias: "Harvey — Boot Announcement"
+    trigger:
+      - platform: homeassistant
+        event: start
+    action:
+      - delay: "00:00:20"
+      - service: system_log.write
+        data:
+          message: >
+            Harvey Bus systems online. All services ready.
+            Good {{ ['morning','morning','morning','afternoon','afternoon','evening','evening','evening','evening'][now().hour // 3] }}.
+          level: info
+    mode: single
 
-      openwakeword_available:
-        friendly_name: "OpenWakeWord Available"
-        unique_id: openwakeword_available
-        device_class: connectivity
-        value_template: "{{ (states('input_boolean.openwakeword_running') | default('unknown')) == 'on' }}"
+  - id: check_internet
+    alias: "Harvey — Check Internet Every 5 Min"
+    trigger:
+      - platform: time_pattern
+        minutes: "/5"
+    action:
+      - service: input_boolean.turn_on
+        entity_id: input_boolean.internet_available
+    mode: single
 
-# Automations for voice assistant
-automation: !include ../automations.yaml
+  - id: night_mode_auto
+    alias: "Harvey — Night Mode at 10pm"
+    trigger:
+      - platform: time
+        at: "22:00:00"
+    action:
+      - service: scene.turn_on
+        entity_id: scene.night_mode
+    mode: single
+
+  - id: morning_mode_auto
+    alias: "Harvey — Morning Mode at 7am"
+    trigger:
+      - platform: time
+        at: "07:00:00"
+    action:
+      - service: scene.turn_on
+        entity_id: scene.morning_mode
+    mode: single

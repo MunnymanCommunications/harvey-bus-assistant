@@ -150,6 +150,10 @@ apt-get install -y -qq libedgetpu1-std python3-pycoral 2>/dev/null || \
 python3 -m pip install --quiet --break-system-packages \
     pycoral tflite-runtime numpy aiohttp 2>/dev/null || true
 
+# System-wide websockets for scripts/monitor.py and the desktop launcher,
+# which run as the desktop user (not inside a venv) via plain `python3`.
+python3 -m pip install --quiet --break-system-packages websockets 2>/dev/null || true
+
 # udev rule — Coral usable without root
 cat > /etc/udev/rules.d/99-coral.rules << 'UDEV'
 SUBSYSTEM=="usb", ATTRS{idVendor}=="1a6e", GROUP="plugdev", MODE="0664"
@@ -471,18 +475,16 @@ input_select:
     initial: Local (Qwen2.5)
     icon: mdi:robot
 
-sensor:
-  - platform: template
-    sensors:
-      harvey_mode_status:
-        friendly_name: "Harvey Mode"
-        value_template: >
+template:
+  - sensor:
+      - name: "Harvey Mode"
+        state: >
           {% if is_state('input_boolean.internet_available', 'on') %}
             Online
           {% else %}
             Off-Grid
           {% endif %}
-        icon_template: >
+        icon: >
           {% if is_state('input_boolean.internet_available', 'on') %}
             mdi:wifi
           {% else %}
@@ -497,13 +499,12 @@ automation:
         event: start
     action:
       - delay: "00:00:20"
-      - service: tts.speak
+      - service: system_log.write
         data:
-          entity_id: tts.piper
           message: >
-            Harvey Bus systems online.
-            All services ready.
+            Harvey Bus systems online. All services ready.
             Good {{ ['morning','morning','morning','afternoon','afternoon','evening','evening','evening','evening'][now().hour // 3] }}.
+          level: info
     mode: single
 
   - id: check_internet
@@ -512,9 +513,7 @@ automation:
       - platform: time_pattern
         minutes: "/5"
     action:
-      - service: input_boolean.turn_{{
-          'on' if now() | string != '' else 'off'
-        }}
+      - service: input_boolean.turn_on
         entity_id: input_boolean.internet_available
     mode: single
 
@@ -586,8 +585,15 @@ Voice assistant rules — CRITICAL:
 - ALWAYS respond in 1-3 short sentences. This is voice output.
 - Be direct: "Lights on." not "I have turned on the lights for you."
 - You work fully offline. Never say you need internet for basic smart home tasks.
-- When controlling devices, state the result: "Done. Temperature set to 72."
 - You represent Venture LLC's technology — be professional but warm.
+- You do NOT set timers, alarms, or reminders, and you do NOT control smart
+  home devices yourself. Home Assistant already tried and failed to handle
+  the request before it ever reached you — so it is IMPOSSIBLE for you to
+  set one, and saying you did is always a lie, even if it sounds helpful.
+  Example — user says "set a timer for the eclipse tonight": WRONG reply:
+  "Sure, timer set for tonight." RIGHT reply: "I can't set that — try
+  something like 'set a timer for ten minutes.'" Follow the RIGHT pattern
+  every time a timer, alarm, or reminder request reaches you.
 
 You know:
 - You run on the Harvey Bus server (Dell server, Ubuntu, local-only).
@@ -597,8 +603,11 @@ You know:
 """
 
 PARAMETER temperature 0.4
-PARAMETER num_ctx 1024
-PARAMETER num_predict 120
+PARAMETER num_ctx 2048
+# 120 cut multi-sentence answers off mid-word (done_reason='length' instead of
+# 'stop'). This is a runaway guard, not a length target — the prompt above is
+# what keeps replies short.
+PARAMETER num_predict 250
 PARAMETER repeat_penalty 1.15
 PARAMETER top_p 0.9
 MODELFILE
@@ -637,7 +646,10 @@ services:
     devices:
       - /dev/bus/usb:/dev/bus/usb    # Coral TPU + USB devices
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8123/api/"]
+      # HA's frontend index is served unauthenticated, unlike /api/ (401
+      # without a token) -- keep this token-free so nobody is tempted to
+      # bake a real token into a file that might end up in version control.
+      test: ["CMD", "curl", "-sf", "http://localhost:8123/"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -659,9 +671,9 @@ services:
       - /opt/harvey/whisper-data:/data
     ports:
       - "10300:10300"
-    mem_limit: 512m
+    mem_limit: 1g
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 10300 || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/10300' || exit 1"]
       interval: 30s
       retries: 3
       start_period: 60s
@@ -680,9 +692,12 @@ services:
       - /opt/harvey/piper-data:/data
     ports:
       - "10200:10200"
-    mem_limit: 256m
+    # 256m left Piper pinned at its ceiling: constant reclaim stalls made it
+    # stop answering on 10200 for a minute or two at a time, which hung the
+    # pipeline at the synthesize stage with no error.
+    mem_limit: 1g
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 10200 || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/10200' || exit 1"]
       interval: 30s
       retries: 3
       start_period: 45s
@@ -692,20 +707,30 @@ services:
     container_name: openwakeword
     image: rhasspy/wyoming-openwakeword:latest
     restart: always
-    command: --uri tcp://0.0.0.0:10400 --preload-model hey_jarvis
+    command: >
+      --uri tcp://0.0.0.0:10400
+      --preload-model hey_jarvis
+      --threshold 0.35
+      --custom-model-dir /custom-models
+    volumes:
+      - /opt/harvey/openwakeword-models:/custom-models
     ports:
       - "10400:10400"
-    devices:
-      - /dev/bus/usb:/dev/bus/usb    # Coral TPU wake word acceleration
-    privileged: true
+    # No Coral passthrough here: openWakeWord's models cannot run on an Edge
+    # TPU. edgetpu_compiler rejects melspectrogram (CONV_2D fails to prepare)
+    # and hey_jarvis (dynamic-sized tensors), and maps 0 of 64 embedding_model
+    # ops to the TPU because the weights are float32, not int8. The USB
+    # passthrough and privileged flag bought nothing and are dropped.
     mem_limit: 256m
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 10400 || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/10400' || exit 1"]
       interval: 30s
       retries: 3
       start_period: 45s
 
 COMPOSE
+
+mkdir -p /opt/harvey/openwakeword-models
 
 success "docker-compose.yml written"
 
@@ -813,12 +838,93 @@ check_container() {
     fi
 }
 
+# Detect the satellite's known "stuck listening/processing" bug: the
+# assist_satellite entity gets wedged in a non-idle state and silently
+# stops responding to new wake words, even though the process itself
+# still shows as "active". A plain is-active check can't catch this.
+check_satellite_stuck() {
+    local token state last_changed last_epoch now_epoch age
+    token=$(cat /opt/harvey/ha_token 2>/dev/null)
+    [[ -z "$token" ]] && return
+
+    local resp
+    resp=$(curl -sf --max-time 5 http://localhost:8123/api/states/assist_satellite.harvey_satellite \
+        -H "Authorization: Bearer ${token}" 2>/dev/null)
+    [[ -z "$resp" ]] && return
+
+    state=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin).get('state',''))" 2>/dev/null)
+    last_changed=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin).get('last_changed',''))" 2>/dev/null)
+    [[ -z "$state" || -z "$last_changed" ]] && return
+
+    if [[ "$state" == "idle" ]]; then
+        return
+    fi
+
+    last_epoch=$(date -d "$last_changed" +%s 2>/dev/null)
+    now_epoch=$(date +%s)
+    [[ -z "$last_epoch" ]] && return
+    age=$(( now_epoch - last_epoch ))
+
+    # How long a state can legitimately last differs enormously, so a single
+    # threshold either kills real work or leaves a wedge sitting too long.
+    #   listening  — bounded by VAD, so past ~45s it is always a wedge.
+    #   processing — STT plus generation; on this CPU a long answer can take
+    #                a minute, and prompt evaluation alone has hit 25s.
+    #   responding — the reply is being spoken. num_predict allows 250 tokens,
+    #                which is around 90s of speech, so this needs the most room.
+    local limit
+    case "$state" in
+        listening)  limit=45  ;;
+        processing) limit=120 ;;
+        responding) limit=180 ;;
+        *)          limit=45  ;;
+    esac
+
+    if (( age > limit )); then
+        echo "[$DATE] WARNING: satellite stuck in '$state' for ${age}s (limit ${limit}s) — restarting" >> "$LOG"
+        systemctl restart harvey-satellite.service
+
+        # Restarting the satellite alone does not always clear it: if the
+        # entity state is wedged on the Home Assistant side, the integration
+        # only pushes a new state on a transition, so it stays stuck. Reload
+        # the Wyoming config entry to force the entity back to a clean state.
+        sleep 8
+        state=$(curl -sf --max-time 5 http://localhost:8123/api/states/assist_satellite.harvey_satellite \
+            -H "Authorization: Bearer ${token}" 2>/dev/null \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('state',''))" 2>/dev/null)
+        if [[ "$state" != "idle" ]]; then
+            # Resolved fresh each time (not hardcoded): this is the config
+            # entry ID of whichever Wyoming integration owns the satellite
+            # entity, which differs per install and can even change on this
+            # one if the integration is ever removed and re-added.
+            local wyoming_entry_id
+            wyoming_entry_id=$(python3 -c "
+import json
+reg = json.load(open('/opt/harvey/ha-config/.storage/core.entity_registry'))
+ent = next((e for e in reg['data']['entities']
+            if e['entity_id'] == 'assist_satellite.harvey_satellite'), None)
+print(ent['config_entry_id'] if ent else '')
+" 2>/dev/null)
+            if [[ -n "$wyoming_entry_id" ]]; then
+                echo "[$DATE] Still '$state' after restart — reloading Wyoming integration ($wyoming_entry_id)" >> "$LOG"
+                curl -sf --max-time 10 -X POST \
+                    "http://localhost:8123/api/config/config_entries/entry/${wyoming_entry_id}/reload" \
+                    -H "Authorization: Bearer ${token}" >/dev/null 2>&1
+            else
+                echo "[$DATE] Still '$state' after restart — could not resolve Wyoming entry to reload" >> "$LOG"
+            fi
+        fi
+    fi
+}
+
 check_service "ollama"
 check_service "harvey-stack"
+check_service "harvey-satellite"
 check_container "homeassistant"
 check_container "whisper-stt"
 check_container "piper-tts"
 check_container "openwakeword"
+check_satellite_stuck
 WATCHDOG
 chmod +x /opt/harvey/scripts/watchdog.sh
 
@@ -829,11 +935,62 @@ python3 -m venv /opt/harvey/venv
 # Copy router script
 cp "$(dirname "${BASH_SOURCE[0]}")/harvey_router.py" /opt/harvey/scripts/ 2>/dev/null || true
 
+# ── Harvey capabilities added after the original install ──────
+# These are hardware-independent (no satellite/audio setup required) and
+# safe on any install: reminders with hourly re-nagging and deterministic
+# "mark that complete" resolution, tolerance for the timer-phrasing STT
+# slips found in real use, and automatic failover to the local Ollama model
+# whenever a configured remote one (e.g. a Mac) is unreachable.
+step "Additional Harvey capabilities"
+
+REPO_DIR="$(dirname "${BASH_SOURCE[0]}")"
+mkdir -p /opt/harvey/ha-config/custom_sentences/en /opt/harvey/openwakeword-models
+
+for f in harvey_reminders.yaml; do
+    cp "${REPO_DIR}/ha-config/packages/${f}" "/opt/harvey/ha-config/packages/${f}" 2>/dev/null || \
+        warn "Could not copy ${f} — add it manually from the repo"
+done
+cp "${REPO_DIR}/ha-config/custom_sentences/en/harvey_timer_tolerance.yaml" \
+    /opt/harvey/ha-config/custom_sentences/en/ 2>/dev/null || \
+    warn "Could not copy timer-phrasing tolerance — add it manually from the repo"
+
+for f in llm-failover.py oww_onnx_to_tflite.py install-wakeword.sh satellite-refresh.sh \
+         harvey-warmup.sh start-satellite.sh monitor.py; do
+    cp "${REPO_DIR}/scripts/${f}" "/opt/harvey/scripts/${f}" 2>/dev/null || \
+        warn "Could not copy scripts/${f} — add it manually from the repo"
+done
+chmod +x /opt/harvey/scripts/*.sh /opt/harvey/scripts/*.py 2>/dev/null || true
+
+# llm-failover needs only Ollama, not the physical satellite -- safe to
+# enable unconditionally. It's a no-op (does nothing, changes nothing) on
+# a single-backend install with no remote Ollama configured.
+cp "${REPO_DIR}/systemd/harvey-llm-failover.service" /etc/systemd/system/ 2>/dev/null || true
+cp "${REPO_DIR}/systemd/harvey-llm-failover.timer" /etc/systemd/system/ 2>/dev/null || true
+
+# The rest (satellite-refresh, wakeword-install, warmup) install their unit
+# files now but are only ENABLED once the satellite itself is set up below,
+# since they target harvey-satellite.service, which does not exist until
+# scripts/start-satellite.sh has been run for this machine's audio hardware.
+for u in harvey-satellite-refresh harvey-wakeword-install harvey-warmup; do
+    cp "${REPO_DIR}/systemd/${u}.service" /etc/systemd/system/ 2>/dev/null || true
+    [[ -f "${REPO_DIR}/systemd/${u}.timer" ]] && \
+        cp "${REPO_DIR}/systemd/${u}.timer" /etc/systemd/system/ 2>/dev/null || true
+done
+
+success "Reminders, timer-phrasing tolerance, and LLM failover installed"
+
 # ── Enable everything ──────────────────────────────────────────
 systemctl daemon-reload
 systemctl enable ollama
 systemctl enable harvey-stack
 systemctl enable harvey-watchdog.timer
+systemctl enable --now harvey-llm-failover.timer
+# harvey-satellite-refresh / harvey-wakeword-install / harvey-warmup are
+# installed but not enabled here -- they target harvey-satellite.service,
+# which this script does not create. See "Voice Satellite Setup" in the
+# README for the one manual, hardware-specific step (mic/speaker detection)
+# that wires the physical satellite up, after which those three timers
+# should also be enabled.
 # (Router enabled after first HA boot confirms token is working)
 
 success "Systemd services configured"
